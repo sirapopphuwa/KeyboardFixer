@@ -1,6 +1,7 @@
 .DS_Store
 .build/
 build/
+build-v2/
 DerivedData/
 *.xcuserstate
 xcuserdata/

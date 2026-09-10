@@ -2,6 +2,8 @@
 
 KeyboardFixer is a native, offline macOS menu-bar utility that repairs text typed with the wrong keyboard layout selected. It converts by physical keyboard key and Shift state—not by translation, autocorrect, dictionaries, or AI.
 
+Version 2 adds one-step selected-text replacement: highlight an editable text selection in most apps and press **Command-Shift-X**. KeyboardFixer copies the selection, detects the direction, converts it, and replaces the selection in place. Secure fields and apps that block standard Copy or Paste operations are intentionally unsupported.
+
 ```text
 z,vpkdlihk'cvr
 →
@@ -37,7 +39,7 @@ Auto detection scores Latin letters and Thai Unicode scalars strongly. Digits, w
 - `AppModel.swift`: UI state and user actions
 - `Converter/`: layouts, scalar converter, and conservative detector
 - `Models/`: physical key and conversion-mode types
-- `Services/`: pasteboard, Carbon hotkey, and launch-at-login integration
+- `Services/`: pasteboard snapshots, Accessibility key events, Carbon hotkeys, and launch-at-login integration
 - `KeyboardFixerTests/`: mapping, round-trip, Unicode, and detector tests
 
 The UI uses `MenuBarExtra` and has no normal launch window. `LSUIElement` in `Info.plist` keeps the app out of the Dock while it remains running in the menu bar.
@@ -80,11 +82,22 @@ The script builds Release and copies the result to `/Applications/KeyboardFixer.
 
 ## Clipboard and shortcut behavior
 
-KeyboardFixer reads the general pasteboard only when **Paste & Convert** is clicked or the enabled **Command-Shift-V** global shortcut is pressed. It never polls, logs, uploads, or stores clipboard history. The shortcut replaces clipboard text with the corrected result; it deliberately does not synthesize a paste into the active app, so Accessibility permission is unnecessary. Paste normally afterward with Command-V.
+KeyboardFixer reads the general pasteboard only when **Paste & Convert**, **Command-Shift-V**, or **Command-Shift-X** is explicitly invoked. It never polls, logs, uploads, or stores clipboard history.
+
+- **Command-Shift-V** converts clipboard text without Accessibility permission. Paste normally afterward with Command-V.
+- **Command-Shift-X** copies highlighted text, converts it, and pastes it over the selection. It requires Accessibility permission because macOS protects synthetic Copy and Paste keystrokes.
+
+For Command-Shift-X, KeyboardFixer snapshots the existing clipboard before the operation and restores it after the target app consumes the paste. Restoration happens only if no other process changed the clipboard in the meantime, preventing newer clipboard content from being overwritten.
+
+Selected-text replacement operates on plain text. In rich-text editors, the replacement normally adopts the formatting at the insertion point; formatting that varied inside the original selection may not be retained.
 
 Automatic copying after **Paste & Convert** is on by default and can be disabled in Settings. Auto mode leaves uncertain clipboard text unchanged.
 
-The shortcut uses Carbon's supported global hotkey registration behind `HotKeyService`. It is isolated from the converter so a future version can offer configurable key combinations or optional automatic paste without changing core logic.
+Both shortcuts use Carbon's supported global hotkey registration behind `HotKeyService`. Automatic replacement runs only on an explicit shortcut press; the app does not monitor typing or selected text continuously.
+
+## Accessibility permission for selected-text replacement
+
+The first time Command-Shift-X is pressed, macOS prompts for Accessibility access. Enable KeyboardFixer under **System Settings → Privacy & Security → Accessibility**, then press the shortcut again. The permission is used only to send Copy and Paste keystrokes after the user invokes the shortcut. It does not grant KeyboardFixer network access, and KeyboardFixer does not retain the selected text.
 
 ## Launch at Login
 

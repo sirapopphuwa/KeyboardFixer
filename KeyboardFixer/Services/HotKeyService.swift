@@ -2,14 +2,34 @@ import Carbon
 import Foundation
 
 final class HotKeyService {
-    private static let signature: OSType = 0x4B465852 // KFXR
-    private static let identifier: UInt32 = 1
+    enum Shortcut {
+        case clipboardConversion
+        case selectedTextReplacement
 
+        fileprivate var identifier: UInt32 {
+            switch self {
+            case .clipboardConversion: 1
+            case .selectedTextReplacement: 2
+            }
+        }
+
+        fileprivate var keyCode: UInt32 {
+            switch self {
+            case .clipboardConversion: UInt32(kVK_ANSI_V)
+            case .selectedTextReplacement: UInt32(kVK_ANSI_X)
+            }
+        }
+    }
+
+    private static let signature: OSType = 0x4B465852 // KFXR
+
+    private let shortcut: Shortcut
     private var hotKeyReference: EventHotKeyRef?
     private var eventHandlerReference: EventHandlerRef?
     private var action: (() -> Void)?
 
-    init() {
+    init(shortcut: Shortcut) {
+        self.shortcut = shortcut
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
@@ -30,15 +50,16 @@ final class HotKeyService {
                     &hotKeyID
                 )
 
-                guard status == noErr,
-                      hotKeyID.signature == HotKeyService.signature,
-                      hotKeyID.id == HotKeyService.identifier else {
-                    return noErr
-                }
-
                 let service = Unmanaged<HotKeyService>
                     .fromOpaque(userData)
                     .takeUnretainedValue()
+
+                guard status == noErr,
+                      hotKeyID.signature == HotKeyService.signature,
+                      hotKeyID.id == service.shortcut.identifier else {
+                    return noErr
+                }
+
                 DispatchQueue.main.async {
                     service.action?()
                 }
@@ -67,10 +88,10 @@ final class HotKeyService {
         guard hotKeyReference == nil else { return }
         let hotKeyID = EventHotKeyID(
             signature: Self.signature,
-            id: Self.identifier
+            id: shortcut.identifier
         )
         RegisterEventHotKey(
-            UInt32(kVK_ANSI_V),
+            shortcut.keyCode,
             UInt32(cmdKey | shiftKey),
             hotKeyID,
             GetApplicationEventTarget(),

@@ -9,6 +9,10 @@ struct MenuBarView: View {
             header
             modePicker
 
+            Label("Highlight text in most apps and press ⌘⇧X", systemImage: "selection.pin.in.out")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Input")
                     .font(.caption)

@@ -17,10 +17,12 @@ let package = Package(
                 "KeyboardFixerApp.swift",
                 "MenuBarView.swift",
                 "Resources",
-                "Services",
+                "Services/AccessibilityService.swift",
+                "Services/HotKeyService.swift",
+                "Services/LaunchAtLoginService.swift",
                 "SettingsView.swift"
             ],
-            sources: ["Converter", "Models"]
+            sources: ["Converter", "Models", "Services/ClipboardService.swift"]
         ),
         .testTarget(
             name: "KeyboardFixerTests",

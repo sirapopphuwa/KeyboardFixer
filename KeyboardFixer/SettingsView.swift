@@ -5,21 +5,44 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Toggle(
-                "Launch at Login",
-                isOn: Binding(
-                    get: { model.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
+            Section("General") {
+                Toggle(
+                    "Launch at Login",
+                    isOn: Binding(
+                        get: { model.launchAtLogin },
+                        set: { model.setLaunchAtLogin($0) }
+                    )
                 )
-            )
 
-            Toggle("Copy result automatically after Paste & Convert", isOn: $model.copyAutomatically)
-            Toggle("Enable global shortcut (⌘⇧V)", isOn: $model.globalShortcutEnabled)
+                Toggle("Copy result automatically after Paste & Convert", isOn: $model.copyAutomatically)
 
-            Picker("Default conversion mode", selection: $model.conversionMode) {
-                ForEach(ConversionMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
+                Picker("Default conversion mode", selection: $model.conversionMode) {
+                    ForEach(ConversionMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
                 }
+            }
+
+            Section("Keyboard Shortcuts") {
+                Toggle("Convert clipboard with ⌘⇧V", isOn: $model.globalShortcutEnabled)
+                Toggle("Replace selected text with ⌘⇧X", isOn: $model.selectedTextShortcutEnabled)
+
+                HStack {
+                    Label(
+                        model.accessibilityGranted ? "Accessibility allowed" : "Accessibility required for ⌘⇧X",
+                        systemImage: model.accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(model.accessibilityGranted ? .green : .orange)
+
+                    Spacer()
+
+                    if !model.accessibilityGranted {
+                        Button("Allow…") {
+                            model.requestAccessibilityPermission()
+                        }
+                    }
+                }
+                .font(.caption)
             }
 
             if let settingsError = model.settingsError {
@@ -30,6 +53,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 470, height: 250)
+        .frame(width: 500, height: 360)
+        .onAppear {
+            model.refreshAccessibilityStatus()
+        }
     }
 }

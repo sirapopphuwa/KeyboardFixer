@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
         static let conversionMode = "conversionMode"
         static let copyAutomatically = "copyAutomatically"
         static let globalShortcutEnabled = "globalShortcutEnabled"
+        static let selectedTextShortcutEnabled = "selectedTextShortcutEnabled"
     }
 
     @Published var inputText = "" {
@@ -29,25 +30,36 @@ final class AppModel: ObservableObject {
     @Published var globalShortcutEnabled: Bool {
         didSet {
             defaults.set(globalShortcutEnabled, forKey: DefaultsKey.globalShortcutEnabled)
-            configureHotKey()
+            configureHotKeys()
+        }
+    }
+    @Published var selectedTextShortcutEnabled: Bool {
+        didSet {
+            defaults.set(selectedTextShortcutEnabled, forKey: DefaultsKey.selectedTextShortcutEnabled)
+            configureHotKeys()
         }
     }
     @Published private(set) var launchAtLogin: Bool
+    @Published private(set) var accessibilityGranted: Bool
     @Published var settingsError: String?
 
     private let converter = KeyboardConverter()
     private let detector = AutoDetector()
     private let clipboard = ClipboardService()
-    private let hotKeyService = HotKeyService()
+    private let clipboardHotKeyService = HotKeyService(shortcut: .clipboardConversion)
+    private let selectedTextHotKeyService = HotKeyService(shortcut: .selectedTextReplacement)
+    private let accessibilityService = AccessibilityService()
     private let launchAtLoginService = LaunchAtLoginService()
     private let defaults: UserDefaults
     private var statusTask: Task<Void, Never>?
+    private var selectedTextTask: Task<Void, Never>?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
             DefaultsKey.copyAutomatically: true,
             DefaultsKey.globalShortcutEnabled: true,
+            DefaultsKey.selectedTextShortcutEnabled: true,
             DefaultsKey.conversionMode: ConversionMode.automatic.rawValue
         ])
 
@@ -56,8 +68,10 @@ final class AppModel: ObservableObject {
         ) ?? .automatic
         copyAutomatically = defaults.bool(forKey: DefaultsKey.copyAutomatically)
         globalShortcutEnabled = defaults.bool(forKey: DefaultsKey.globalShortcutEnabled)
+        selectedTextShortcutEnabled = defaults.bool(forKey: DefaultsKey.selectedTextShortcutEnabled)
         launchAtLogin = LaunchAtLoginService().isEnabled
-        configureHotKey()
+        accessibilityGranted = AccessibilityService().isTrusted
+        configureHotKeys()
     }
 
     func pasteAndConvert() {
@@ -112,6 +126,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func requestAccessibilityPermission() {
+        accessibilityGranted = accessibilityService.requestPermission()
+        if accessibilityGranted {
+            showStatus("Accessibility enabled ✓", confirmation: true)
+        } else {
+            showStatus("Allow KeyboardFixer in Accessibility, then try ⌘⇧X again", confirmation: false)
+        }
+    }
+
+    func refreshAccessibilityStatus() {
+        accessibilityGranted = accessibilityService.isTrusted
+    }
+
     private func updateOutputForCurrentInput() {
         guard !inputText.isEmpty else {
             outputText = ""
@@ -134,9 +161,12 @@ final class AppModel: ObservableObject {
         statusMessage = nil
     }
 
-    private func configureHotKey() {
-        hotKeyService.configure(enabled: globalShortcutEnabled) { [weak self] in
+    private func configureHotKeys() {
+        clipboardHotKeyService.configure(enabled: globalShortcutEnabled) { [weak self] in
             self?.performHotKeyConversion()
+        }
+        selectedTextHotKeyService.configure(enabled: selectedTextShortcutEnabled) { [weak self] in
+            self?.performSelectedTextReplacement()
         }
     }
 
@@ -159,6 +189,94 @@ final class AppModel: ObservableObject {
         } else {
             showStatus("Could not write to clipboard", confirmation: false)
         }
+    }
+
+    private func performSelectedTextReplacement() {
+        accessibilityGranted = accessibilityService.isTrusted
+        guard accessibilityGranted else {
+            requestAccessibilityPermission()
+            return
+        }
+
+        selectedTextTask?.cancel()
+        selectedTextTask = Task { [weak self] in
+            await self?.replaceSelectedText()
+        }
+    }
+
+    private func replaceSelectedText() async {
+        let originalClipboard = clipboard.snapshot()
+        let marker = "KeyboardFixer.Selection.\(UUID().uuidString)"
+
+        guard clipboard.writePlainText(marker) else {
+            showStatus("Could not prepare clipboard", confirmation: false)
+            return
+        }
+
+        let markerChangeCount = clipboard.changeCount
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        guard !Task.isCancelled else {
+            clipboard.restore(originalClipboard, ifChangeCountMatches: markerChangeCount)
+            return
+        }
+
+        accessibilityService.copySelection()
+        var copiedChangeCount = markerChangeCount
+        for _ in 0..<10 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            copiedChangeCount = clipboard.changeCount
+            if copiedChangeCount != markerChangeCount || Task.isCancelled {
+                break
+            }
+        }
+
+        guard !Task.isCancelled else {
+            clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
+            return
+        }
+
+        guard copiedChangeCount != markerChangeCount,
+              let selectedText = clipboard.readPlainText(),
+              !selectedText.isEmpty,
+              selectedText != marker else {
+            clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
+            showStatus("Select editable text, then press ⌘⇧X", confirmation: false)
+            return
+        }
+
+        let convertedText: String
+        if let direction = conversionMode.direction {
+            convertedText = converter.convert(selectedText, direction: direction)
+        } else {
+            guard let direction = detector.detect(selectedText).direction else {
+                clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
+                showStatus("Direction uncertain — selection unchanged", confirmation: false)
+                return
+            }
+            convertedText = converter.convert(selectedText, direction: direction)
+        }
+
+        guard convertedText != selectedText else {
+            clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
+            showStatus("No convertible text found", confirmation: false)
+            return
+        }
+
+        inputText = selectedText
+        outputText = convertedText
+
+        guard clipboard.writePlainText(convertedText) else {
+            clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
+            showStatus("Could not write converted text", confirmation: false)
+            return
+        }
+
+        let convertedChangeCount = clipboard.changeCount
+        accessibilityService.pasteReplacingSelection()
+        showStatus("Selection fixed ✓", confirmation: true)
+
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        clipboard.restore(originalClipboard, ifChangeCountMatches: convertedChangeCount)
     }
 
     private func showStatus(_ message: String, confirmation: Bool) {
