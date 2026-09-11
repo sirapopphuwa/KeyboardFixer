@@ -18,4 +18,13 @@ if [[ -z "$APP_PATH" ]]; then
   exit 1
 fi
 
+# Keep a stable local designated requirement. This is important for macOS
+# Accessibility authorization when development builds are rebuilt in place.
+/usr/bin/codesign \
+  --force \
+  --sign - \
+  --identifier com.keyboardfixer.KeyboardFixer \
+  -r='designated => identifier "com.keyboardfixer.KeyboardFixer"' \
+  "$APP_PATH"
+
 echo "Built: $APP_PATH"

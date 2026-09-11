@@ -50,6 +50,12 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+
+            if let shortcutError = model.shortcutError {
+                Text(shortcutError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
         .formStyle(.grouped)
         .padding()

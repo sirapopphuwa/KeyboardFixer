@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
         static let copyAutomatically = "copyAutomatically"
         static let globalShortcutEnabled = "globalShortcutEnabled"
         static let selectedTextShortcutEnabled = "selectedTextShortcutEnabled"
+        static let launchAtLoginRequested = "launchAtLoginRequested"
     }
 
     @Published var inputText = "" {
@@ -42,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var launchAtLogin: Bool
     @Published private(set) var accessibilityGranted: Bool
     @Published var settingsError: String?
+    @Published private(set) var shortcutError: String?
 
     private let converter = KeyboardConverter()
     private let detector = AutoDetector()
@@ -60,6 +62,7 @@ final class AppModel: ObservableObject {
             DefaultsKey.copyAutomatically: true,
             DefaultsKey.globalShortcutEnabled: true,
             DefaultsKey.selectedTextShortcutEnabled: true,
+            DefaultsKey.launchAtLoginRequested: true,
             DefaultsKey.conversionMode: ConversionMode.automatic.rawValue
         ])
 
@@ -71,6 +74,16 @@ final class AppModel: ObservableObject {
         selectedTextShortcutEnabled = defaults.bool(forKey: DefaultsKey.selectedTextShortcutEnabled)
         launchAtLogin = LaunchAtLoginService().isEnabled
         accessibilityGranted = AccessibilityService().isTrusted
+
+        if defaults.bool(forKey: DefaultsKey.launchAtLoginRequested),
+           Bundle.main.bundleURL.path.hasPrefix("/Applications/") {
+            do {
+                try launchAtLoginService.setEnabled(true)
+                launchAtLogin = launchAtLoginService.isEnabled
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
         configureHotKeys()
     }
 
@@ -116,6 +129,7 @@ final class AppModel: ObservableObject {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
+        defaults.set(enabled, forKey: DefaultsKey.launchAtLoginRequested)
         do {
             try launchAtLoginService.setEnabled(enabled)
             launchAtLogin = launchAtLoginService.isEnabled
@@ -162,12 +176,15 @@ final class AppModel: ObservableObject {
     }
 
     private func configureHotKeys() {
-        clipboardHotKeyService.configure(enabled: globalShortcutEnabled) { [weak self] in
+        let clipboardRegistered = clipboardHotKeyService.configure(enabled: globalShortcutEnabled) { [weak self] in
             self?.performHotKeyConversion()
         }
-        selectedTextHotKeyService.configure(enabled: selectedTextShortcutEnabled) { [weak self] in
+        let selectedTextRegistered = selectedTextHotKeyService.configure(enabled: selectedTextShortcutEnabled) { [weak self] in
             self?.performSelectedTextReplacement()
         }
+        shortcutError = clipboardRegistered && selectedTextRegistered
+            ? nil
+            : "A shortcut is unavailable. Quit other KeyboardFixer copies and reopen this app."
     }
 
     private func performHotKeyConversion() {
@@ -198,10 +215,51 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if let selectedText = accessibilityService.readSelectedText() {
+            replaceSelectedTextDirectly(selectedText)
+            return
+        }
+
         selectedTextTask?.cancel()
         selectedTextTask = Task { [weak self] in
             await self?.replaceSelectedText()
         }
+    }
+
+    private func replaceSelectedTextDirectly(_ selectedText: String) {
+        guard !selectedText.isEmpty else {
+            showStatus("Select editable text, then press ⌘⇧X", confirmation: false)
+            return
+        }
+
+        guard let convertedText = convertedSelection(selectedText) else { return }
+        guard accessibilityService.replaceSelectedText(with: convertedText) else {
+            showStatus("This app does not allow replacing its selection", confirmation: false)
+            return
+        }
+
+        inputText = selectedText
+        outputText = convertedText
+        showStatus("Selection fixed ✓", confirmation: true)
+    }
+
+    private func convertedSelection(_ selectedText: String) -> String? {
+        let convertedText: String
+        if let direction = conversionMode.direction {
+            convertedText = converter.convert(selectedText, direction: direction)
+        } else {
+            guard let direction = detector.detect(selectedText).direction else {
+                showStatus("Direction uncertain — selection unchanged", confirmation: false)
+                return nil
+            }
+            convertedText = converter.convert(selectedText, direction: direction)
+        }
+
+        guard convertedText != selectedText else {
+            showStatus("No convertible text found", confirmation: false)
+            return nil
+        }
+        return convertedText
     }
 
     private func replaceSelectedText() async {
@@ -244,21 +302,8 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let convertedText: String
-        if let direction = conversionMode.direction {
-            convertedText = converter.convert(selectedText, direction: direction)
-        } else {
-            guard let direction = detector.detect(selectedText).direction else {
-                clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
-                showStatus("Direction uncertain — selection unchanged", confirmation: false)
-                return
-            }
-            convertedText = converter.convert(selectedText, direction: direction)
-        }
-
-        guard convertedText != selectedText else {
+        guard let convertedText = convertedSelection(selectedText) else {
             clipboard.restore(originalClipboard, ifChangeCountMatches: copiedChangeCount)
-            showStatus("No convertible text found", confirmation: false)
             return
         }
 

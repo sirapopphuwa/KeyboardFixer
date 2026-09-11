@@ -1,6 +1,82 @@
 import Carbon
 import Foundation
 
+private let keyboardFixerHotKeySignature: OSType = 0x4B465852 // KFXR
+
+private final class HotKeyCenter {
+    static let shared = HotKeyCenter()
+
+    private var actions: [UInt32: () -> Void] = [:]
+    private var eventHandlerReference: EventHandlerRef?
+    private(set) var isInstalled = false
+
+    private init() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
+                var hotKeyID = EventHotKeyID()
+                let parameterStatus = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+
+                guard parameterStatus == noErr,
+                      hotKeyID.signature == keyboardFixerHotKeySignature else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
+                let center = Unmanaged<HotKeyCenter>
+                    .fromOpaque(userData)
+                    .takeUnretainedValue()
+                return center.performAction(for: hotKeyID.id)
+            },
+            1,
+            &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandlerReference
+        )
+
+        isInstalled = status == noErr
+    }
+
+    deinit {
+        if let eventHandlerReference {
+            RemoveEventHandler(eventHandlerReference)
+        }
+    }
+
+    func setAction(_ action: @escaping () -> Void, for identifier: UInt32) {
+        actions[identifier] = action
+    }
+
+    func removeAction(for identifier: UInt32) {
+        actions.removeValue(forKey: identifier)
+    }
+
+    private func performAction(for identifier: UInt32) -> OSStatus {
+        guard let action = actions[identifier] else {
+            return OSStatus(eventNotHandledErr)
+        }
+
+        DispatchQueue.main.async(execute: action)
+        return noErr
+    }
+}
+
 final class HotKeyService {
     enum Shortcut {
         case clipboardConversion
@@ -21,76 +97,41 @@ final class HotKeyService {
         }
     }
 
-    private static let signature: OSType = 0x4B465852 // KFXR
-
     private let shortcut: Shortcut
+    private let center = HotKeyCenter.shared
     private var hotKeyReference: EventHotKeyRef?
-    private var eventHandlerReference: EventHandlerRef?
     private var action: (() -> Void)?
 
     init(shortcut: Shortcut) {
         self.shortcut = shortcut
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
-
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, event, userData in
-                guard let event, let userData else { return noErr }
-                var hotKeyID = EventHotKeyID()
-                let status = GetEventParameter(
-                    event,
-                    EventParamName(kEventParamDirectObject),
-                    EventParamType(typeEventHotKeyID),
-                    nil,
-                    MemoryLayout<EventHotKeyID>.size,
-                    nil,
-                    &hotKeyID
-                )
-
-                let service = Unmanaged<HotKeyService>
-                    .fromOpaque(userData)
-                    .takeUnretainedValue()
-
-                guard status == noErr,
-                      hotKeyID.signature == HotKeyService.signature,
-                      hotKeyID.id == service.shortcut.identifier else {
-                    return noErr
-                }
-
-                DispatchQueue.main.async {
-                    service.action?()
-                }
-                return noErr
-            },
-            1,
-            &eventType,
-            Unmanaged.passUnretained(self).toOpaque(),
-            &eventHandlerReference
-        )
     }
 
     deinit {
         unregister()
-        if let eventHandlerReference {
-            RemoveEventHandler(eventHandlerReference)
-        }
     }
 
-    func configure(enabled: Bool, action: @escaping () -> Void) {
+    @discardableResult
+    func configure(enabled: Bool, action: @escaping () -> Void) -> Bool {
         self.action = action
-        enabled ? register() : unregister()
+
+        guard enabled else {
+            return unregister()
+        }
+
+        guard register() else { return false }
+        center.setAction({ [weak self] in self?.action?() }, for: shortcut.identifier)
+        return true
     }
 
-    private func register() {
-        guard hotKeyReference == nil else { return }
+    private func register() -> Bool {
+        guard center.isInstalled else { return false }
+        guard hotKeyReference == nil else { return true }
+
         let hotKeyID = EventHotKeyID(
-            signature: Self.signature,
+            signature: keyboardFixerHotKeySignature,
             id: shortcut.identifier
         )
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             shortcut.keyCode,
             UInt32(cmdKey | shiftKey),
             hotKeyID,
@@ -98,11 +139,16 @@ final class HotKeyService {
             0,
             &hotKeyReference
         )
+        return status == noErr
     }
 
-    private func unregister() {
-        guard let hotKeyReference else { return }
-        UnregisterEventHotKey(hotKeyReference)
+    @discardableResult
+    private func unregister() -> Bool {
+        center.removeAction(for: shortcut.identifier)
+        guard let hotKeyReference else { return true }
+
+        let status = UnregisterEventHotKey(hotKeyReference)
         self.hotKeyReference = nil
+        return status == noErr
     }
 }
