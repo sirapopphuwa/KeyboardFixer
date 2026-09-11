@@ -46,7 +46,9 @@ function New-KeyboardFixerLayout {
 function New-KeyboardFixerReverseLayout {
     param([Parameter(Mandatory = $true)][hashtable]$Layout)
 
-    $reverse = @{}
+    # A normal PowerShell hashtable is case-insensitive. Keyboard conversion
+    # must keep Shift state, so "a" and "A" must be separate reverse keys.
+    $reverse = New-Object System.Collections.Hashtable([System.StringComparer]::Ordinal)
     foreach ($physicalKey in $script:PhysicalKeys) {
         foreach ($shifted in 0, 1) {
             $key = "$physicalKey|$shifted"
