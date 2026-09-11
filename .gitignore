@@ -4,6 +4,7 @@ build/
 build-v2/
 build-windows/
 build-windows-installer/
+dist/
 DerivedData/
 *.xcuserstate
 xcuserdata/

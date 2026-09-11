@@ -1,0 +1,26 @@
+วิธีติดตั้ง KeyboardFixer บน macOS (เวอร์ชันแจกฟรี)
+=================================================
+
+1. เปิดไฟล์ KeyboardFixer-v2.1.0.dmg
+2. ลาก KeyboardFixer.app ไปวางบนโฟลเดอร์ Applications
+3. เปิด Applications แล้วดับเบิลคลิก KeyboardFixer
+4. หากขึ้นข้อความ “KeyboardFixer Not Opened” ให้กด Done
+5. เปิด System Settings > Privacy & Security
+6. เลื่อนลงมาที่หัวข้อ Security แล้วกด Open Anyway ข้างชื่อ KeyboardFixer
+7. ยืนยันด้วย Touch ID หรือรหัสผ่านของเครื่อง แล้วกด Open อีกครั้ง
+
+สำหรับคีย์ลัด Command-Shift-X
+--------------------------------
+
+1. เปิด System Settings > Privacy & Security > Accessibility
+2. เปิดสวิตช์ให้ KeyboardFixer
+3. กลับไปยังโปรแกรมที่ต้องการ เลือกข้อความ แล้วกด Command-Shift-X
+
+หมายเหตุ
+-------
+
+- ไฟล์นี้รองรับ Mac ชิป Apple Silicon เช่น M1, M2, M3 และ M4
+- ขั้นตอน Open Anyway ทำเพียงครั้งแรกบนแต่ละเครื่อง
+- แอปทำงานอยู่บนแถบเมนูด้านบนและจะไม่แสดงใน Dock
+- แอปทำงานแบบออฟไลน์ ไม่มีระบบติดตาม และไม่ส่งข้อความออกจากเครื่อง
+- ไม่ควรปิด Gatekeeper ของ macOS ทั้งระบบ

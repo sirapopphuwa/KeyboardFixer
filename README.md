@@ -97,6 +97,28 @@ xcodebuild -project KeyboardFixer.xcodeproj -scheme KeyboardFixer -configuration
 
 The script builds Release and copies the result to `/Applications/KeyboardFixer.app`, requesting administrator access only when `/Applications` is not writable.
 
+## Installing the free, non-notarized release
+
+The downloadable DMG uses an ad-hoc signature and is not notarized because
+Apple notarization requires a paid Apple Developer Program membership. macOS
+therefore requires one manual approval the first time the app is opened on
+each Mac:
+
+This DMG currently contains an Apple Silicon (`arm64`) build for M1, M2, M3,
+M4, and newer Apple chips.
+
+1. Open `KeyboardFixer-v2.1.0.dmg`.
+2. Drag `KeyboardFixer.app` onto the `Applications` shortcut.
+3. Open `KeyboardFixer` from the Applications folder.
+4. If macOS shows **“KeyboardFixer Not Opened”**, click **Done**.
+5. Open **System Settings → Privacy & Security**.
+6. Scroll to **Security**, click **Open Anyway** beside KeyboardFixer, and
+   authenticate with Touch ID or the Mac password.
+7. Click **Open** in the final confirmation.
+
+To use Command-Shift-X, also enable KeyboardFixer under **System Settings →
+Privacy & Security → Accessibility**. Never disable Gatekeeper globally.
+
 ## Clipboard and shortcut behavior
 
 KeyboardFixer reads the general pasteboard only when **Paste & Convert**, **Command-Shift-V**, or the Command-Shift-X compatibility fallback is explicitly invoked. It never polls, logs, uploads, or stores clipboard history.
@@ -126,12 +148,6 @@ KeyboardFixer has no networking, analytics, telemetry, clipboard history, or unn
 
 ## Running a locally built unsigned app
 
-A local unsigned build may be blocked by Gatekeeper after being copied between machines. First try Control-clicking the app in Finder, choosing **Open**, and confirming once. You can also approve a blocked app in **System Settings → Privacy & Security**.
-
-If the app is trusted and was downloaded as an archive, remove quarantine from this app only:
-
-```bash
-xattr -d com.apple.quarantine /Applications/KeyboardFixer.app
-```
-
-Do not disable Gatekeeper globally. A distributed release should be signed with an Apple Developer ID Application certificate, hardened, and notarized by Apple.
+A local unsigned build may be blocked by Gatekeeper after being copied between
+machines. Follow the **Installing the free, non-notarized release** steps above
+to approve this app once. Do not disable Gatekeeper globally.
