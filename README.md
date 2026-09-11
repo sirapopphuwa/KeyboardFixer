@@ -12,6 +12,10 @@ z,vpkdlihk'cvr
 
 The same mapping works in reverse, from Thai Kedmanee output back to English (US) keystrokes.
 
+## Windows edition
+
+A separate Windows 10/11 edition is available in [`KeyboardFixer-Windows`](KeyboardFixer-Windows). It uses the same deterministic English US ↔ Thai Kedmanee physical-key mapping and includes system-tray controls, `Ctrl+Shift+V` clipboard conversion, and `Ctrl+Shift+X` selected-text replacement. See its own README for installation and usage instructions.
+
 ## Requirements
 
 - macOS 13 Ventura or newer
@@ -58,6 +62,19 @@ The unsigned app is produced at:
 
 ```text
 build/Build/Products/Release/KeyboardFixer.app
+```
+
+Create a drag-and-drop macOS disk image with an Applications shortcut:
+
+```bash
+./scripts/package-macos.sh
+```
+
+The installer is produced at `dist/KeyboardFixer-v2.1.0.dmg`. You can also
+package an existing build without rebuilding it:
+
+```bash
+./scripts/package-macos.sh /path/to/KeyboardFixer.app
 ```
 
 Core converter tests can also run through Swift Package Manager:
