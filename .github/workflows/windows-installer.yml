@@ -1,0 +1,53 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "KeyboardFixer-Windows/**"
+      - ".github/workflows/windows-installer.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Test keyboard conversion
+        shell: powershell
+        run: >-
+          powershell.exe
+          -NoProfile
+          -ExecutionPolicy Bypass
+          -File .\KeyboardFixer-Windows\Test-KeyboardFixer.ps1
+
+      - name: Build installer
+        shell: powershell
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {
+              throw 'Inno Setup 6 is not available on this Windows runner.'
+          }
+          & $compiler '.\KeyboardFixer-Windows\KeyboardFixer.iss'
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeyboardFixer-Windows-v2.1.0-Setup
+          path: build-windows-installer/KeyboardFixer-Windows-v2.1.0-Setup.exe
+          if-no-files-found: error
+
+      - name: Attach installer to the v2.1.0 release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release upload v2.1.0
+          .\build-windows-installer\KeyboardFixer-Windows-v2.1.0-Setup.exe
+          --clobber
