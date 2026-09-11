@@ -52,9 +52,9 @@ function New-KeyboardFixerReverseLayout {
             $key = "$physicalKey|$shifted"
             $character = $Layout[$key]
             if (-not $reverse.ContainsKey($character)) {
-                $reverse[$character] = New-Object 'System.Collections.Generic.List[string]'
+                $reverse[$character] = @()
             }
-            $reverse[$character].Add($key)
+            $reverse[$character] += $key
         }
     }
     return $reverse
